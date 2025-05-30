@@ -1,0 +1,77 @@
+name: Mirror Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Tag of the release to mirror'
+        required: true
+      release_name:
+        description: 'Name of the release'
+        required: true
+      release_body:
+        description: 'Release notes/description'
+        required: true
+      prerelease:
+        description: 'Is this a prerelease?'
+        required: true
+        default: 'false'
+      draft:
+        description: 'Is this a draft release?'
+        required: true
+        default: 'false'
+      assets_url:
+        description: 'URL to the release assets zip'
+        required: true
+  repository_dispatch:
+    types: [trigger-mirror-release]
+
+jobs:
+  mirror-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set inputs from dispatch event
+        id: set-inputs
+        if: github.event_name == 'repository_dispatch'
+        run: |
+          echo "RELEASE_TAG=${{ github.event.client_payload.release_tag }}" >> $GITHUB_ENV
+          echo "RELEASE_NAME=${{ github.event.client_payload.release_name }}" >> $GITHUB_ENV
+          echo "RELEASE_BODY=${{ github.event.client_payload.release_body }}" >> $GITHUB_ENV
+          echo "PRERELEASE=${{ github.event.client_payload.prerelease }}" >> $GITHUB_ENV
+          echo "DRAFT=${{ github.event.client_payload.draft }}" >> $GITHUB_ENV
+          echo "ASSETS_URL=${{ github.event.client_payload.assets_url }}" >> $GITHUB_ENV
+
+      - name: Set inputs from workflow dispatch
+        id: set-manual-inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          echo "RELEASE_TAG=${{ github.event.inputs.release_tag }}" >> $GITHUB_ENV
+          echo "RELEASE_NAME=${{ github.event.inputs.release_name }}" >> $GITHUB_ENV
+          echo "RELEASE_BODY=${{ github.event.inputs.release_body }}" >> $GITHUB_ENV
+          echo "PRERELEASE=${{ github.event.inputs.prerelease }}" >> $GITHUB_ENV
+          echo "DRAFT=${{ github.event.inputs.draft }}" >> $GITHUB_ENV
+          echo "ASSETS_URL=${{ github.event.inputs.assets_url }}" >> $GITHUB_ENV
+
+      - name: Download release assets
+        run: |
+          mkdir -p release-assets
+          curl -L -o release-assets/assets.zip "${{ env.ASSETS_URL }}"
+          cd release-assets
+          unzip assets.zip
+          rm assets.zip
+
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body: ${{ env.RELEASE_BODY }}
+          draft: ${{ env.DRAFT == 'true' }}
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
